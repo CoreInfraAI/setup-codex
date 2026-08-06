@@ -118,6 +118,7 @@ def build_catalog(models_path):
             if entry is None:
                 warnings.append(f"skipped {slug}: no bundled catalog entry in deepseek_models.json")
                 continue
+            entry["description"] = f"{entry['display_name']} served via CoreInfra AI Hub."
             entry["priority"] = len(models) + 1
             models.append(entry)
             continue
