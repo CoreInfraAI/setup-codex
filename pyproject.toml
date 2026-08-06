@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "setup-codex"
+version = "0.1.0"
+description = "Configure OpenAI Codex CLI to use CoreInfra AI Hub"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+setup-codex = "setup_codex:main"
