@@ -49,6 +49,15 @@ def eprint(*args):
     print(*args, file=sys.stderr)
 
 
+def backup(path):
+    """Copy path to <name>.bak before modifying it; return a log line or None."""
+    if not path.exists():
+        return None
+    bak = path.with_name(path.name + ".bak")
+    shutil.copy2(path, bak)
+    return f"backed up {path.name} -> {bak.name}"
+
+
 def bundled_catalog():
     out = subprocess.run(
         ["codex", "debug", "models", "--bundled"],
@@ -201,6 +210,9 @@ def ensure_config(codex_home, model):
         changes.append("added [model_providers.coreinfra] section")
 
     if changes:
+        msg = backup(cfg)
+        if msg:
+            changes.insert(0, msg)
         cfg.write_text(header + rest)
     return changes or ["config.toml already up to date"]
 
@@ -215,9 +227,10 @@ def ensure_env(codex_home, api_key):
         else:
             sep = "" if existing.endswith("\n") or not existing else "\n"
             new = f"{existing}{sep}{line}\n"
+        msg = backup(env_path) if new != existing else None
         env_path.write_text(new)
         env_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        return "wrote COREINFRA_API_KEY to .env"
+        return "\n".join(filter(None, [msg, "wrote COREINFRA_API_KEY to .env"]))
     if not env_path.exists() or "COREINFRA_API_KEY" not in env_path.read_text():
         return (
             "no API token configured — get one at https://hub.coreinfra.ai and either\n"
@@ -275,6 +288,9 @@ def main():
     fd, tmp = tempfile.mkstemp(dir=codex_home, prefix="models.json.", suffix=".tmp")
     with os.fdopen(fd, "w") as f:
         json.dump(catalog, f, indent=2)
+    msg = backup(models_path)
+    if msg:
+        print(msg)
     os.replace(tmp, models_path)
     print(f"wrote {models_path}: {len(catalog['models'])} models")
     for m in catalog["models"]:
