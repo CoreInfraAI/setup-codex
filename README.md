@@ -1,20 +1,40 @@
 # setup-codex
 
-One-line setup for using [OpenAI Codex](https://developers.openai.com/codex) CLI with [CoreInfra AI Hub](https://hub.coreinfra.ai).
+Configure the [OpenAI Codex CLI](https://developers.openai.com/codex) to use models served by [CoreInfra AI Hub](https://hub.coreinfra.ai).
+
+## Prerequisites
+
+You need the Codex CLI, a [CoreInfra AI Hub](https://hub.coreinfra.ai) token, and either `uvx` or `pipx`.
+
+On a new Mac, install Apple's Command Line Tools first. Skip this step if they are already installed.
+
+```sh
+xcode-select --install
+```
+
+If you do not have `uvx`, [install uv](https://docs.astral.sh/uv/getting-started/installation/):
+
+```sh
+brew install uv
+```
+
+You can also use uv's official installer or choose the `pipx` command below.
 
 ## Quick start
+
+Run setup with your CoreInfra token:
 
 ```sh
 uvx --from git+https://github.com/CoreInfraAI/setup-codex setup-codex --api-key <your-token>
 ```
 
-Get a token at https://hub.coreinfra.ai. Then verify:
+Then verify that Codex works:
 
 ```sh
 codex exec "2 + 2" --skip-git-repo-check
 ```
 
-No `uvx`? Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first, e.g. `brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`. Alternatively, `pipx run` works the same way:
+To run setup with `pipx` instead:
 
 ```sh
 pipx run --spec git+https://github.com/CoreInfraAI/setup-codex setup-codex --api-key <your-token>
@@ -22,11 +42,14 @@ pipx run --spec git+https://github.com/CoreInfraAI/setup-codex setup-codex --api
 
 ## What it does
 
-1. **Regenerates `<codex-home>/models.json`** — a codex model catalog covering every model CoreInfra AI Hub serves over the Responses API. The model list is fetched live from the hub's [prices endpoint](https://hub.coreinfra.ai/hub/api/prices) (every model with `responses` in its `protocols`). Codex's `model_catalog_json` *replaces* its bundled catalog rather than merging, so the file is rebuilt from your installed codex binary's own bundled catalog (`codex debug models --bundled`) — instruction templates, context windows, and reasoning levels always match your codex version. Models codex doesn't bundle yet get an entry cloned from the closest bundled sibling.
-2. **Updates `<codex-home>/config.toml`** — adds the `coreinfra` model provider, `model_catalog_json`, and (on a fresh config) sensible defaults. Existing settings (MCP servers, project trust, other providers) are preserved; already-present keys are only updated where needed.
-3. **Optionally writes the API token** to `<codex-home>/.env` (`--api-key`), chmod 600.
+1. Creates a model catalog at `<codex-home>/models.json` from the models available through CoreInfra AI Hub.
+2. Configures `<codex-home>/config.toml` to use the `coreinfra` provider while preserving your other settings.
+3. Stores your API token in `<codex-home>/.env` with file mode `600` when you pass `--api-key`.
+4. Backs up each existing file before changing it. Backups are saved beside the original file with a `.bak` suffix.
 
-## Options
+## Configuration
+
+### Options
 
 ```
 --codex-home PATH   codex home directory (default: $CODEX_HOME or ~/.codex)
@@ -34,21 +57,21 @@ pipx run --spec git+https://github.com/CoreInfraAI/setup-codex setup-codex --api
 --api-key TOKEN     CoreInfra API token to write into .env
 ```
 
-## Environment variables
+### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `COREINFRA_HUB_BASE_URL` | `https://hub.coreinfra.ai` | Base URL of the CoreInfra Hub instance. Override to point setup-codex — and the codex config it writes — at a different endpoint, e.g. a staging instance for testing. Trailing slashes are stripped. |
+| `COREINFRA_HUB_BASE_URL` | `https://hub.coreinfra.ai` | Hub endpoint used by setup and written to the Codex config. Override it for another instance, such as staging. Trailing slashes are removed. |
 
-## After a codex upgrade
+## After a Codex upgrade
 
-Re-run the same command to refresh the catalog against the new binary (add `--refresh` to bypass the uvx cache):
+Re-run setup after upgrading Codex so the model catalog matches the new binary. Add `--refresh` to bypass the `uvx` cache:
 
 ```sh
 uvx --refresh --from git+https://github.com/CoreInfraAI/setup-codex setup-codex
 ```
 
-## Notes
+## Limitations
 
-- Only models the hub serves over the **Responses API** are included; chat-completions and messages models (Kimi, GLM, Claude, `deepseek-v4-pro`) can't be used by codex.
-- ChatGPT Work only works with OpenAI models for now
+- Only models served over the **Responses API** are included. Models limited to chat-completions or messages — including Kimi, GLM, Claude — cannot be used by Codex.
+- ChatGPT Work currently supports only OpenAI models.
