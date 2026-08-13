@@ -31,18 +31,39 @@ import urllib.request
 from pathlib import Path
 
 PROVIDER_ID = "coreinfra"
-PROVIDER_BLOCK = f"""\
+DEFAULT_HUB_BASE_URL = "https://hub.coreinfra.ai"
+DEFAULT_MODEL = "gpt-5.6-sol"
+
+INTERNAL_MODELS = ["codex-auto-review"]  # hidden; used by approvals_reviewer = "auto_review"
+
+
+def hub_base_url():
+    """CoreInfra Hub base URL to configure against.
+
+    Set COREINFRA_HUB_BASE_URL to point setup-codex — and the codex config
+    it writes — at a different Hub instance (e.g. a staging endpoint for
+    testing). Defaults to the production Hub. Trailing slashes are stripped
+    so the derived paths stay well-formed.
+    """
+    return (os.environ.get("COREINFRA_HUB_BASE_URL") or DEFAULT_HUB_BASE_URL).rstrip("/")
+
+
+def prices_url():
+    return f"{hub_base_url()}/hub/api/prices"
+
+
+def provider_base_url():
+    return f"{hub_base_url()}/openai/api/v1"
+
+
+def provider_block():
+    return f"""\
 [model_providers.{PROVIDER_ID}]
 name = "CoreInfra AI Hub"
-base_url = "https://hub.coreinfra.ai/openai/api/v1"
+base_url = "{provider_base_url()}"
 wire_api = "responses"
 env_key = "COREINFRA_API_KEY"
 """
-
-DEFAULT_MODEL = "gpt-5.6-sol"
-PRICES_URL = "https://hub.coreinfra.ai/hub/api/prices"
-
-INTERNAL_MODELS = ["codex-auto-review"]  # hidden; used by approvals_reviewer = "auto_review"
 
 
 def eprint(*args):
@@ -71,11 +92,12 @@ def hub_models():
 
     Source of truth: the hub's prices endpoint (`protocols` per model).
     """
+    url = prices_url()
     try:
-        with urllib.request.urlopen(PRICES_URL, timeout=30) as resp:
+        with urllib.request.urlopen(url, timeout=30) as resp:
             data = json.load(resp)
     except Exception as err:
-        raise SystemExit(f"error: failed to fetch {PRICES_URL}: {err}")
+        raise SystemExit(f"error: failed to fetch {url}: {err}")
     models = {}
     for provider in data["providers"].values():
         for slug, info in provider["models"].items():
@@ -167,6 +189,29 @@ def catalog_config_value(codex_home):
         return str(codex_home / "models.json")
 
 
+def update_provider_base_url(rest, new_base_url):
+    """Rewrite base_url inside [model_providers.coreinfra] to new_base_url.
+
+    Scans only the provider's own section (up to the next header), so a
+    base_url under another provider is never touched. Returns (rest, changed).
+    """
+    lines = rest.splitlines(keepends=True)
+    in_section = False
+    for i, line in enumerate(lines):
+        if re.match(r"^\[model_providers\.coreinfra\]\s*$", line):
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if re.match(r"^\[", line):  # entered the next section
+            break
+        m = re.match(r'^(\s*base_url\s*=\s*")([^"]*)("\s*)$', line)
+        if m and m.group(2) != new_base_url:
+            lines[i] = f'{m.group(1)}{new_base_url}{m.group(3)}'
+            return "".join(lines), True
+    return rest, False
+
+
 def ensure_config(codex_home, model):
     """Add CoreInfra provider settings to config.toml; preserve everything else."""
     cfg = codex_home / "config.toml"
@@ -178,7 +223,7 @@ def ensure_config(codex_home, model):
             f'model_reasoning_effort = "medium"\n'
             f'preferred_auth_method = "apikey"\n'
             f'model_catalog_json = "{catalog_value}"\n'
-            f"\n{PROVIDER_BLOCK}"
+            f"\n{provider_block()}"
         )
         return ["created config.toml"]
 
@@ -206,8 +251,15 @@ def ensure_config(codex_home, model):
             changes.append(f"added {key}")
 
     if f"[model_providers.{PROVIDER_ID}]" not in rest:
-        rest = rest.rstrip() + "\n\n" + PROVIDER_BLOCK if rest.strip() else PROVIDER_BLOCK
+        rest = rest.rstrip() + "\n\n" + provider_block() if rest.strip() else provider_block()
         changes.append("added [model_providers.coreinfra] section")
+    elif os.environ.get("COREINFRA_HUB_BASE_URL"):
+        # Already configured: re-point the endpoint only when an override is
+        # explicitly requested, so an existing custom base_url is preserved
+        # on plain re-runs.
+        rest, changed = update_provider_base_url(rest, provider_base_url())
+        if changed:
+            changes.append("updated [model_providers.coreinfra] base_url to match COREINFRA_HUB_BASE_URL")
 
     if changes:
         msg = backup(cfg)

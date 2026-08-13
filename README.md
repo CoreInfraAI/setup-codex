@@ -34,6 +34,12 @@ pipx run --spec git+https://github.com/CoreInfraAI/setup-codex setup-codex --api
 --api-key TOKEN     CoreInfra API token to write into .env
 ```
 
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `COREINFRA_HUB_BASE_URL` | `https://hub.coreinfra.ai` | Base URL of the CoreInfra Hub instance. Override to point setup-codex — and the codex config it writes — at a different endpoint, e.g. a staging instance for testing. Trailing slashes are stripped. |
+
 ## After a codex upgrade
 
 Re-run the same command to refresh the catalog against the new binary (add `--refresh` to bypass the uvx cache):
