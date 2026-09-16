@@ -87,15 +87,23 @@ def bundled_catalog():
     return {m["slug"]: m for m in json.loads(out.stdout)["models"]}
 
 
-def hub_models():
+def fetch_prices(url, api_key=None):
+    """GET the prices endpoint as JSON, optionally authenticated."""
+    req = urllib.request.Request(url)
+    if api_key:
+        req.add_header("X-CoreInfra-Api-Key", api_key)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def hub_models(api_key=None):
     """{slug: display_name} for every model the hub serves over the Responses API.
 
     Source of truth: the hub's prices endpoint (`protocols` per model).
     """
     url = prices_url()
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:
-            data = json.load(resp)
+        data = fetch_prices(url, api_key)
     except Exception as err:
         raise SystemExit(f"error: failed to fetch {url}: {err}")
     models = {}
@@ -130,9 +138,9 @@ def deepseek_entry(slug):
     return None
 
 
-def build_catalog(models_path):
+def build_catalog(models_path, api_key=None):
     bundled = bundled_catalog()
-    hub = hub_models()
+    hub = hub_models(api_key)
     models = []
     warnings = []
 
@@ -292,6 +300,31 @@ def ensure_env(codex_home, api_key):
     return ".env already has COREINFRA_API_KEY"
 
 
+def resolve_api_key(codex_home, cli_api_key=None):
+    """API key for hub queries: --api-key, then $COREINFRA_API_KEY, then .env.
+
+    Reads only the COREINFRA_API_KEY line of <codex-home>/.env (as written by
+    ensure_env on a previous run), stripping one matching pair of quotes.
+    Whitespace is trimmed and empty values are treated as absent. Never
+    printed; only sent to the hub's prices endpoint.
+    """
+    for candidate in (cli_api_key, os.environ.get("COREINFRA_API_KEY")):
+        if candidate and candidate.strip():
+            return candidate.strip()
+    env_path = codex_home / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            m = re.match(r"^COREINFRA_API_KEY=(.*)$", line)
+            if not m:
+                continue
+            value = m.group(1).strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if value:
+                return value
+    return None
+
+
 def validate_toml(codex_home):
     try:
         import tomllib
@@ -336,7 +369,8 @@ def main():
     codex_home.mkdir(parents=True, exist_ok=True)
     models_path = codex_home / "models.json"
 
-    catalog, warnings = build_catalog(models_path)
+    api_key = resolve_api_key(codex_home, args.api_key)
+    catalog, warnings = build_catalog(models_path, api_key)
     fd, tmp = tempfile.mkstemp(dir=codex_home, prefix="models.json.", suffix=".tmp")
     with os.fdopen(fd, "w") as f:
         json.dump(catalog, f, indent=2)
