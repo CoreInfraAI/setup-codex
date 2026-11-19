@@ -1,5 +1,8 @@
 # setup-codex
 
+> [!WARNING]
+> **This project is archived.** It has been superseded by [CoreInfraAI/wizard](https://github.com/CoreInfraAI/wizard/). Please use that instead.
+
 Configure the [OpenAI Codex CLI](https://developers.openai.com/codex) to use models served by [CoreInfra AI Hub](https://hub.coreinfra.ai).
 
 ## Prerequisites
